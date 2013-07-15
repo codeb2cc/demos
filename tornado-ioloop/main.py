@@ -53,12 +53,53 @@ class TimeoutHandler(RequestHandler):
         self.finish()
 
 
+class DuplicatedHandler(RequestHandler):
+    _duplicated = dict()
+
+    def prepare(self):
+        self.key = self.get_argument('key', '_')
+
+    @asynchronous
+    def get(self):
+        print 'With `key`: %s' % self.key
+        if DuplicatedHandler._duplicated.has_key(self.key):
+            assert isinstance(DuplicatedHandler._duplicated[self.key], list)
+
+            DuplicatedHandler._duplicated[self.key].append((self, self.callback))
+            print 'Duplicated'
+        else:
+            DuplicatedHandler._duplicated[self.key] = []
+            ioloop = IOLoop.instance()
+            ioloop.add_timeout(time.time() + 10, self.timeout)
+            print 'New'
+
+    def timeout(self):
+        print 'Func `timeout`'
+        if DuplicatedHandler._duplicated.has_key(self.key):
+            assert isinstance(DuplicatedHandler._duplicated[self.key], list)
+
+            while len(DuplicatedHandler._duplicated[self.key]):
+                print '#'
+                request, handler = DuplicatedHandler._duplicated[self.key].pop()
+                handler()
+
+        DuplicatedHandler._duplicated.pop(self.key)
+
+        self.callback()
+
+    def callback(self):
+        print 'Func `callback`'
+        self.write('Callback OK')
+        self.finish()
+
+
 class Application(Application):
     def __init__(self):
         handlers = [
             (r'/', IndexHandler),
             (r'/callback', CallbackHandler),
             (r'/timeout', TimeoutHandler),
+            (r'/duplicated', DuplicatedHandler),
         ]
         tornado.web.Application.__init__(self, handlers, debug=True)
 
